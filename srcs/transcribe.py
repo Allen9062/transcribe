@@ -2,6 +2,7 @@ from pathlib import Path
 import argparse
 import os
 import time
+from faster_whisper import WhisperModel
 
 
 AUDIO_EXTS = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".mp4", ".webm"}
@@ -40,6 +41,7 @@ def main() -> None:
     parser.add_argument(
         "--device",
         default="cpu",
+        choices=["cpu", "cuda"],
         help="cpu or cuda",
     )
     parser.add_argument(
@@ -48,13 +50,6 @@ def main() -> None:
         help="Defaults to int8 on cpu and float16 on cuda.",
     )
     args = parser.parse_args()
-
-    try:
-        from faster_whisper import WhisperModel
-    except ImportError as exc:
-        raise SystemExit(
-            "faster-whisper is not installed. Run: pip install faster-whisper"
-        ) from exc
 
     root = Path(__file__).resolve().parents[1]
     input_dir = root / "input"
@@ -95,13 +90,15 @@ def main() -> None:
         size_bytes = audio_path.stat().st_size
         print(f"Transcribing: {audio_path.name} ({_format_size(size_bytes)})")
 
+        transcribe_start = time.perf_counter()
         segments, info = model.transcribe(
             str(audio_path),
-            beam_size=1,
+            beam_size=5,
             vad_filter=True,
             condition_on_previous_text=False,
         )
         text = "".join(segment.text for segment in segments).strip()
+        transcribe_end = time.perf_counter()
         out_path = output_dir / f"{audio_path.stem}.txt"
         out_path.write_text(text, encoding="utf-8")
 
@@ -115,7 +112,7 @@ def main() -> None:
         print(
             "Duration: {} | Transcribe: {:.2f}s | Total: {:.2f}s".format(
                 _format_duration(duration_sec),
-                file_end - file_start,
+                transcribe_end - transcribe_start,
                 file_end - file_start,
             )
         )
